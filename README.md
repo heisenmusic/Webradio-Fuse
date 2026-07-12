@@ -50,6 +50,7 @@ docker compose up -d postgres
 cp apps/api/.env.example apps/api/.env
 pnpm prisma:generate
 pnpm --filter @fuse/api prisma:push   # cria o schema no banco
+pnpm --filter @fuse/api db:seed       # tenant, loja e admin padrão
 pnpm dev:api                          # http://localhost:4000
 
 # Web (Player + Admin)
@@ -58,6 +59,16 @@ pnpm dev:web                          # http://localhost:3000
 
 - **Player da loja** → `http://localhost:3000/player`
 - **Dashboard operacional** → `http://localhost:3000/admin`
+
+**Credenciais padrão da API** (criadas pelo seed — troque em produção):
+
+| Campo | Valor |
+| --- | --- |
+| E-mail | `admin@fuse.local` |
+| Senha | `FuseAdmin@2026` |
+| Papel | `SUPER_ADMIN` |
+
+Login: `POST http://localhost:4000/v1/auth/login` com `{ "email", "password" }` → retorna `accessToken` (Bearer) e `refreshToken`. O dashboard `/admin` nesta versão roda em modo demonstração (frota simulada, sem tela de login) — a autenticação protege os endpoints da API.
 
 O player já vem configurado com os streams padrão e failover automático:
 
