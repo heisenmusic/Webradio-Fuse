@@ -24,3 +24,6 @@ apps/api/prisma/*.db
 
 # electron
 apps/desktop/release/
+
+# mídia enviada em runtime
+apps/api/uploads/
