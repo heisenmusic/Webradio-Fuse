@@ -169,6 +169,22 @@ export class FuseAudioEngine {
     }
   }
 
+  /** Teste de áudio remoto: tom de 440 Hz por 1s direto no destino. */
+  audioTest() {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 440;
+    g.gain.setValueAtTime(0.001, this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, this.ctx.currentTime + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 1);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 1.05);
+  }
+
   private playOneShot(url: string): Promise<void> {
     return new Promise((resolve) => {
       const el = new Audio(url);

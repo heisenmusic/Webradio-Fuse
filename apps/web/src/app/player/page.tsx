@@ -23,6 +23,7 @@ import {
   type Scene,
 } from "@fuse/shared";
 import { FuseAudioEngine, type EngineSnapshot } from "@/lib/player/audio-engine";
+import { connectRemoteControl } from "@/lib/player/remote-control";
 import { LocalScheduler } from "@/lib/player/scheduler";
 import { SceneEngine, DEMO_SCENES } from "@/lib/player/scene-engine";
 import { usePlayerConfig } from "@/lib/player/player-store";
@@ -164,9 +165,18 @@ export default function PlayerPage() {
       }
     }, HEARTBEAT_INTERVAL_MS);
 
+    // Controle remoto: comandos da central via Socket.IO (no-op sem API).
+    const disconnectRemote = connectRemoteControl({
+      storeCode: identity.code,
+      engine,
+      runScene,
+      showMessage,
+    });
+
     return () => {
       scheduler.stop();
       clearInterval(heartbeat);
+      disconnectRemote();
     };
   }, [started, engine, identity.code, runScene, showMessage]);
 

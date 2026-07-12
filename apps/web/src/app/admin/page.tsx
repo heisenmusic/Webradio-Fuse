@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  LogOut,
   MapPin,
   MonitorSpeaker,
   Power,
@@ -14,14 +16,49 @@ import {
 } from "lucide-react";
 import type { FleetHealth, FleetStoreStatus } from "@fuse/shared";
 import { buildMockFleet, HEALTH_META } from "@/lib/admin/mock-fleet";
+import { apiConfigured, clearAuth, fetchFleetStatus, getAuth } from "@/lib/api";
 
 /**
  * Dashboard Operacional — visão em tempo real da frota de lojas.
- * Nesta versão usa uma frota simulada; a integração real consome
- * GET /v1/fleet/status e o canal Socket.IO `fleet:update`.
+ * Com NEXT_PUBLIC_API_URL definido consome GET /v1/fleet/status (com login);
+ * sem API configurada opera em modo demonstração com frota simulada.
  */
 export default function AdminPage() {
-  const fleet = useMemo(() => buildMockFleet(), []);
+  const router = useRouter();
+  const [fleet, setFleet] = useState<FleetStoreStatus[]>([]);
+  const [mode, setMode] = useState<"loading" | "demo" | "live">("loading");
+
+  useEffect(() => {
+    if (!apiConfigured) {
+      setFleet(buildMockFleet());
+      setMode("demo");
+      return;
+    }
+    if (!getAuth()) {
+      router.replace("/admin/login");
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const status = await fetchFleetStatus();
+        if (cancelled) return;
+        setFleet(status.stores);
+        setMode("live");
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof Error && err.message === "not-authenticated") {
+          router.replace("/admin/login");
+        }
+      }
+    };
+    void load();
+    const timer = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [router]);
   const [healthFilter, setHealthFilter] = useState<FleetHealth | "all">("all");
   const [stateFilter, setStateFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
@@ -74,10 +111,29 @@ export default function AdminPage() {
             <p className="text-sm text-fuse-muted">Fuse Varejo S.A. · frota em tempo real</p>
           </div>
         </div>
-        <span className="glass hidden items-center gap-2 rounded-full px-4 py-2 text-sm text-fuse-muted md:flex">
-          <span className="h-2 w-2 animate-pulse-live rounded-full bg-fuse-live" />
-          Atualização contínua
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="glass hidden items-center gap-2 rounded-full px-4 py-2 text-sm text-fuse-muted md:flex">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                mode === "live" ? "animate-pulse-live bg-fuse-live" : "bg-fuse-warn"
+              }`}
+            />
+            {mode === "live" ? "Conectado à API" : "Modo demonstração"}
+          </span>
+          {mode === "live" && (
+            <button
+              onClick={() => {
+                clearAuth();
+                router.replace("/admin/login");
+              }}
+              aria-label="Sair"
+              title="Sair"
+              className="glass flex h-10 w-10 items-center justify-center rounded-full text-fuse-muted hover:text-white"
+            >
+              <LogOut size={15} />
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Cards de status */}
@@ -190,7 +246,7 @@ export default function AdminPage() {
         {/* Coluna direita: mapa + detalhe */}
         <div className="flex flex-col gap-4">
           <FleetMap fleet={filtered} selected={selected} onSelect={setSelected} />
-          {selected && <StoreDetail store={selected} />}
+          {selected && <StoreDetail store={selected} live={mode === "live"} />}
         </div>
       </div>
     </main>
@@ -298,7 +354,23 @@ function FleetMap({
   );
 }
 
-function StoreDetail({ store }: { store: FleetStoreStatus }) {
+function StoreDetail({ store, live }: { store: FleetStoreStatus; live: boolean }) {
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const dispatch = async (type: string, label: string) => {
+    if (!live) {
+      setFeedback("Modo demonstração — comandos exigem a API conectada.");
+      return;
+    }
+    try {
+      const { sendStoreCommand } = await import("@/lib/api");
+      await sendStoreCommand(store.storeId, type);
+      setFeedback(`✓ ${label} enviado para ${store.storeCode}`);
+    } catch {
+      setFeedback(`Falha ao enviar "${label}".`);
+    }
+  };
+
   return (
     <motion.div
       key={store.storeId}
@@ -331,11 +403,28 @@ function StoreDetail({ store }: { store: FleetStoreStatus }) {
           Controle remoto
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <RemoteAction icon={<Power size={14} />} label="Reiniciar player" />
-          <RemoteAction icon={<RefreshCcw size={14} />} label="Trocar stream" />
-          <RemoteAction icon={<Volume2 size={14} />} label="Teste de áudio" />
-          <RemoteAction icon={<MonitorSpeaker size={14} />} label="Diagnóstico" />
+          <RemoteAction
+            icon={<Power size={14} />}
+            label="Reiniciar player"
+            onClick={() => void dispatch("restart-player", "Reiniciar player")}
+          />
+          <RemoteAction
+            icon={<RefreshCcw size={14} />}
+            label="Trocar stream"
+            onClick={() => void dispatch("switch-stream", "Trocar stream")}
+          />
+          <RemoteAction
+            icon={<Volume2 size={14} />}
+            label="Teste de áudio"
+            onClick={() => void dispatch("audio-test", "Teste de áudio")}
+          />
+          <RemoteAction
+            icon={<MonitorSpeaker size={14} />}
+            label="Diagnóstico"
+            onClick={() => void dispatch("open-diagnostics", "Diagnóstico")}
+          />
         </div>
+        {feedback && <p className="mt-3 text-xs text-fuse-muted">{feedback}</p>}
         <p className="mt-3 text-xs leading-relaxed text-fuse-muted/70">
           Os comandos são entregues via Socket.IO (sala <code>store:{store.storeCode}</code>) pela
           rota <code>POST /v1/stores/:id/commands</code>.
@@ -354,9 +443,20 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function RemoteAction({ icon, label }: { icon: React.ReactNode; label: string }) {
+function RemoteAction({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <button className="flex items-center gap-2 rounded-xl border border-fuse-border px-3 py-2.5 text-xs text-fuse-muted transition-colors hover:border-fuse-primary/60 hover:text-white">
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 rounded-xl border border-fuse-border px-3 py-2.5 text-xs text-fuse-muted transition-colors hover:border-fuse-primary/60 hover:text-white"
+    >
       {icon}
       {label}
     </button>

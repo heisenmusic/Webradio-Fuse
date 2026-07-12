@@ -68,7 +68,12 @@ pnpm dev:web                          # http://localhost:3000
 | Senha | `FuseAdmin@2026` |
 | Papel | `SUPER_ADMIN` |
 
-Login: `POST http://localhost:4000/v1/auth/login` com `{ "email", "password" }` → retorna `accessToken` (Bearer) e `refreshToken`. O dashboard `/admin` nesta versão roda em modo demonstração (frota simulada, sem tela de login) — a autenticação protege os endpoints da API.
+O dashboard tem dois modos, decididos por `NEXT_PUBLIC_API_URL` (veja `apps/web/.env.example`):
+
+- **Sem API configurada** → modo demonstração: `/admin` abre direto com frota simulada.
+- **Com API configurada** → `/admin/login` autentica na API (JWT + refresh com rotação automática no cliente), `/admin` mostra a frota real de `GET /v1/fleet/status` (atualizada a cada 30 s) e os botões de controle remoto enviam comandos reais via `POST /v1/stores/:id/commands` → Socket.IO → player.
+
+O player, quando a API está configurada, envia heartbeats a cada 30 s e conecta ao canal realtime para receber comandos da central (reiniciar, trocar stream, volume, aviso imediato, teste de áudio, cena, limpar cache, diagnóstico) com confirmação `command:ack`.
 
 O player já vem configurado com os streams padrão e failover automático:
 

@@ -112,9 +112,21 @@ cena. O player confirma com `command:ack`, retransmitido aos dashboards.
 
 Totais da frota (online/offline/falha/sem áudio/latência/sem sync), filtros por
 estado, cidade, grupo e marca, busca, mapa com projeção lat/lng e painel de controle
-remoto por loja. Nesta versão usa frota simulada determinística
-(`src/lib/admin/mock-fleet.ts`); a integração real troca uma função pelo fetch de
-`/v1/fleet/status` + subscribe no Socket.IO.
+remoto por loja.
+
+Dois modos, decididos por `NEXT_PUBLIC_API_URL`:
+
+- **Demo** (sem API): frota simulada determinística (`src/lib/admin/mock-fleet.ts`),
+  sem login — útil para avaliação e desenvolvimento de UI.
+- **Live** (com API): `/admin/login` autentica via `POST /v1/auth/login`; o cliente
+  (`src/lib/api.ts`) renova o access token automaticamente na rotação de refresh;
+  a frota vem de `GET /v1/fleet/status` (polling 30 s) e os botões de controle
+  remoto disparam `POST /v1/stores/:id/commands`.
+
+No player, `src/lib/player/remote-control.ts` conecta ao namespace `/realtime`,
+entra na sala `store:<code>` e executa os comandos recebidos (reinício, troca de
+stream, volume, aviso imediato, teste de áudio com tom de 440 Hz, cenas, limpeza de
+cache, diagnóstico), respondendo com `command:ack` retransmitido aos dashboards.
 
 ## Distribuição do player
 
