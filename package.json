@@ -1,0 +1,16 @@
+{
+  "name": "fuse-radio-enterprise",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fuse Radio Enterprise — rádio corporativa, digital signage e automação operacional para redes varejistas.",
+  "scripts": {
+    "build": "pnpm --filter @fuse/shared build && pnpm --filter @fuse/api build && pnpm --filter @fuse/web build",
+    "dev:web": "pnpm --filter @fuse/web dev",
+    "dev:api": "pnpm --filter @fuse/api start:dev",
+    "prisma:generate": "pnpm --filter @fuse/api prisma:generate",
+    "lint": "pnpm -r --if-present lint"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,406 @@
+// Fuse Radio Enterprise — modelo de dados multi-tenant.
+// Isolamento: toda entidade de negócio referencia um Tenant.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Multi-tenant
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  domain       String?  @unique
+  logoUrl      String?
+  primaryColor String   @default("#6d5efc")
+  accentColor  String   @default("#22d3ee")
+  theme        Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  brands        Brand[]
+  groups        StoreGroup[]
+  stores        Store[]
+  users         User[]
+  stations      Station[]
+  mediaAssets   MediaAsset[]
+  announcements Announcement[]
+  scenes        Scene[]
+  events        OperationalEvent[]
+  signage       SignageItem[]
+  auditLogs     AuditLog[]
+}
+
+model Brand {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  logoUrl  String?
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stores Store[]
+
+  @@index([tenantId])
+}
+
+model StoreGroup {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stores Store[]
+
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Estações (rádios) e endpoints com prioridade de failover
+// ---------------------------------------------------------------------------
+
+model Station {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  endpoints StreamEndpoint[]
+  stores    Store[]
+
+  @@index([tenantId])
+}
+
+model StreamEndpoint {
+  id        String @id @default(cuid())
+  stationId String
+  url       String
+  /// 0 = principal, 1 = secundário, 2 = terciário…
+  priority  Int    @default(0)
+
+  station Station @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  @@index([stationId, priority])
+}
+
+// ---------------------------------------------------------------------------
+// Lojas e dispositivos
+// ---------------------------------------------------------------------------
+
+enum StoreHealth {
+  ONLINE
+  OFFLINE
+  DEGRADED
+  NO_AUDIO
+  HIGH_LATENCY
+  OUT_OF_SYNC
+}
+
+model Store {
+  id        String  @id @default(cuid())
+  tenantId  String
+  brandId   String?
+  groupId   String?
+  stationId String?
+  code      String
+  name      String
+  city      String
+  state     String?
+  country   String  @default("BR")
+  /// IANA timezone — informativo. A execução de programação usa o relógio do dispositivo.
+  timezone  String  @default("America/Sao_Paulo")
+  lat       Float?
+  lng       Float?
+
+  health     StoreHealth @default(OFFLINE)
+  lastSeenAt DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand      Brand?      @relation(fields: [brandId], references: [id])
+  group      StoreGroup? @relation(fields: [groupId], references: [id])
+  station    Station?    @relation(fields: [stationId], references: [id])
+  device     Device?
+  heartbeats Heartbeat[]
+  incidents  Incident[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, health])
+  @@index([tenantId, state, city])
+}
+
+model Device {
+  id         String    @id @default(cuid())
+  storeId    String    @unique
+  platform   String?
+  appVersion String?
+  lastIp     String?
+  apiKeyHash String
+  pairedAt   DateTime  @default(now())
+  lastSeenAt DateTime?
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Monitoramento
+// ---------------------------------------------------------------------------
+
+model Heartbeat {
+  id          String   @id @default(cuid())
+  storeId     String
+  receivedAt  DateTime @default(now())
+  deviceTime  DateTime
+  appVersion  String
+  uptimeSec   Int
+  playerState String
+  streamUrl   String?
+  volume      Float
+  quality     String
+  cpuPct      Float?
+  ramMb       Float?
+  latencyMs   Int?
+  ip          String?
+  platform    String?
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, receivedAt])
+}
+
+enum IncidentType {
+  STREAM_FAILOVER
+  STREAM_DOWN
+  EMERGENCY_PLAYLIST
+  DEVICE_OFFLINE
+  HIGH_LATENCY
+  SYNC_LOST
+}
+
+model Incident {
+  id         String       @id @default(cuid())
+  storeId    String
+  type       IncidentType
+  message    String
+  meta       Json?
+  createdAt  DateTime     @default(now())
+  resolvedAt DateTime?
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Usuários / RBAC
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  MANAGER
+  SUPPORT
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole @default(VIEWER)
+  mfaSecret    String?
+  mfaEnabled   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id])
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@index([tenantId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Mídia, avisos e programação (execução SEMPRE no horário do dispositivo)
+// ---------------------------------------------------------------------------
+
+enum MediaKind {
+  AUDIO
+  IMAGE
+  VIDEO
+}
+
+model MediaAsset {
+  id          String    @id @default(cuid())
+  tenantId    String
+  kind        MediaKind
+  name        String
+  url         String
+  mime        String?
+  sizeBytes   Int?
+  durationSec Float?
+  createdAt   DateTime  @default(now())
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  announcements Announcement[]
+
+  @@index([tenantId, kind])
+}
+
+enum AnnouncementPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+model Announcement {
+  id       String               @id @default(cuid())
+  tenantId String
+  assetId  String
+  label    String
+  category String?
+  priority AnnouncementPriority @default(NORMAL)
+  /// "HH:mm" — horário LOCAL do dispositivo
+  time     String
+  /// 0=dom … 6=sáb. Vazio ⇒ todos os dias
+  daysOfWeek     Int[]
+  repeatEveryMin Int?
+  startsOn       DateTime?
+  endsOn         DateTime?
+  /// Segmentação: ids de grupos/lojas alvo (vazio ⇒ todas)
+  storeGroupIds String[]
+  storeIds      String[]
+  createdAt     DateTime  @default(now())
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  MediaAsset @relation(fields: [assetId], references: [id])
+
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Cenas operacionais (motor de automação)
+// ---------------------------------------------------------------------------
+
+model Scene {
+  id          String  @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  /// Lista ordenada de SceneAction (contrato em @fuse/shared)
+  actions Json
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events OperationalEvent[]
+
+  @@index([tenantId])
+}
+
+enum OperationalEventKind {
+  OPENING
+  LUNCH
+  PROMOTION
+  SHIFT_CHANGE
+  CLOSING
+  CLEANING
+  INVENTORY
+  CAMPAIGN
+  CUSTOM
+}
+
+model OperationalEvent {
+  id       String               @id @default(cuid())
+  tenantId String
+  sceneId  String
+  kind     OperationalEventKind
+  label    String
+  /// "HH:mm" — horário LOCAL do dispositivo
+  time       String
+  daysOfWeek Int[]
+  storeGroupIds String[]
+  storeIds      String[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scene  Scene  @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Digital Signage
+// ---------------------------------------------------------------------------
+
+enum SignageKind {
+  IMAGE
+  VIDEO
+  BANNER
+  QR_CODE
+  CAMPAIGN
+  NOTICE
+  GOAL
+  RANKING
+}
+
+model SignageItem {
+  id          String      @id @default(cuid())
+  tenantId    String
+  kind        SignageKind
+  title       String
+  assetUrl    String?
+  body        String?
+  durationSec Int         @default(15)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  storeGroupIds String[]
+  storeIds      String[]
+  createdAt     DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Auditoria
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  ip        String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+}

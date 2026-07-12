@@ -1,0 +1,13 @@
+{
+  "name": "@fuse/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fuse Radio Enterprise — shell Electron (modo kiosk para Smart TV / Mini PC)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

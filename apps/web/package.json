@@ -1,0 +1,29 @@
+{
+  "name": "@fuse/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fuse Radio Enterprise — Player da Loja e Dashboard Operacional (Next.js 15 + React 19)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@fuse/shared": "workspace:*",
+    "framer-motion": "^12.23.0",
+    "lucide-react": "^0.544.0",
+    "next": "^15.5.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "socket.io-client": "^4.8.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2"
+  }
+}
