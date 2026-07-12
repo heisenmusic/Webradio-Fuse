@@ -77,7 +77,7 @@ O player, quando a API está configurada, envia heartbeats a cada 30 s, sincroni
 
 **Áreas de gestão do dashboard** (com API conectada): Frota (tempo real via Socket.IO), Avisos (com upload de MP3/WAV/OGG), Cenas & Eventos operacionais, Digital Signage (com upload de imagens) e Lojas.
 
-Para colocar em produção, siga o **[guia de deploy](docs/DEPLOY.md)** — inclui checklist de segurança, variáveis de ambiente, migrations (`prisma migrate deploy`) e dimensionamento.
+Para colocar em produção, siga o **[guia de deploy](docs/DEPLOY.md)** — inclui checklist de segurança, variáveis de ambiente, migrations (`prisma migrate deploy`) e dimensionamento. Para hospedagem com **aaPanel**, há um **[tutorial para iniciantes](docs/TUTORIAL-AAPANEL.md)** com instalador automático (`scripts/instalar-aapanel.sh`).
 
 O player já vem configurado com os streams padrão e failover automático:
 

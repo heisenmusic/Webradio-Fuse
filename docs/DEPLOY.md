@@ -56,6 +56,10 @@ web:3000 e api:4000 — use um reverse proxy (Caddy/Traefik/nginx) com TLS de or
 
 ## Opção A2 — Hospedagem com aaPanel (VPS com painel)
 
+> 👶 **Nunca fez isso?** Siga o passo a passo para iniciantes em
+> [`docs/TUTORIAL-AAPANEL.md`](TUTORIAL-AAPANEL.md) — inclui o instalador
+> automático `scripts/instalar-aapanel.sh`, que faz a parte do terminal por você.
+
 O aaPanel funciona bem como camada de gerenciamento (nginx, PostgreSQL, PM2, SSL).
 Requisitos no App Store do painel: **Nginx**, **PostgreSQL 16** (ou use um Postgres
 gerenciado externo) e **PM2 Manager** (que instala o Node.js — selecione Node 20+).
