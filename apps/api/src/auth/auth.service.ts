@@ -6,6 +6,7 @@ import { JwtService } from '@nestjs/jwt';
 import { createHash, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 export interface AccessTokenPayload {
   sub: string;
@@ -21,6 +22,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly audit: AuditService,
   ) {}
 
   private hashToken(token: string): string {
@@ -37,6 +39,11 @@ export class AuthService {
 
   async login(email: string, password: string) {
     const user = await this.validateUser(email, password);
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user.id,
+      action: 'auth.login',
+    });
     return this.issueTokens(user.id, user.email, user.role, user.tenantId);
   }
 

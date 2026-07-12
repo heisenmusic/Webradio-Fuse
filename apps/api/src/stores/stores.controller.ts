@@ -21,6 +21,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/auth.service';
+import { AuditService } from '../audit/audit.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { StoresService } from './stores.service';
 
@@ -95,6 +96,7 @@ export class StoresController {
   constructor(
     private readonly stores: StoresService,
     private readonly realtime: RealtimeGateway,
+    private readonly audit: AuditService,
   ) {}
 
   @Get()
@@ -139,6 +141,14 @@ export class StoresController {
     @CurrentUser() user: AccessTokenPayload,
   ) {
     const store = await this.stores.get(id);
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user.sub,
+      action: 'store.command',
+      entity: 'Store',
+      entityId: id,
+      meta: { type: dto.type, payload: dto.payload },
+    });
     return this.realtime.sendCommand(store.code, dto.type, dto.payload, user.email);
   }
 }

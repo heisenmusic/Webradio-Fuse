@@ -3,7 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { MediaModule } from './media/media.module';
+import { SignageModule } from './signage/signage.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { StoresModule } from './stores/stores.module';
 import { FleetModule } from './fleet/fleet.module';
@@ -18,7 +21,10 @@ import { HealthController } from './health.controller';
     // Rate limit global: 100 req / 60s por IP
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    AuditModule,
     AuthModule,
+    MediaModule,
+    SignageModule,
     TenantsModule,
     StoresModule,
     FleetModule,

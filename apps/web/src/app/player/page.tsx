@@ -21,14 +21,19 @@ import {
   type ConnectionQuality,
   type PlayerState,
   type Scene,
+  type SignageItem,
 } from "@fuse/shared";
 import { FuseAudioEngine, type EngineSnapshot } from "@/lib/player/audio-engine";
+import { fetchStoreProgram } from "@/lib/player/program-sync";
 import { connectRemoteControl } from "@/lib/player/remote-control";
 import { LocalScheduler } from "@/lib/player/scheduler";
 import { SceneEngine, DEMO_SCENES } from "@/lib/player/scene-engine";
 import { usePlayerConfig } from "@/lib/player/player-store";
 import { VisualizerCanvas } from "@/components/player/VisualizerCanvas";
 import { SettingsPanel } from "@/components/player/SettingsPanel";
+import { SignageLayer } from "@/components/player/SignageLayer";
+
+const PROGRAM_SYNC_INTERVAL_MS = 5 * 60_000;
 
 const APP_VERSION = "0.1.0";
 
@@ -64,6 +69,7 @@ export default function PlayerPage() {
   const [campaign, setCampaign] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [signage, setSignage] = useState<SignageItem[]>([]);
 
   // ---------------------------------------------------------------------
   // Engine + agendador + cenas (instanciados uma única vez no cliente)
@@ -133,11 +139,30 @@ export default function PlayerPage() {
         showMessage(`📢 ${a.label}`, 6);
       },
       onScene: (scene) => runScene(scene),
-      onTick: () => setLastSync(new Date()),
     });
     scheduler.setProgram({ announcements: [], events: [], scenes: DEMO_SCENES });
     scheduler.start();
     schedulerRef.current = scheduler;
+
+    // Sincroniza a programação real da central (definições declarativas);
+    // a EXECUÇÃO continua 100% no relógio local do dispositivo.
+    const syncProgram = async () => {
+      try {
+        const program = await fetchStoreProgram(identity.code);
+        if (!program) return;
+        scheduler.setProgram({
+          announcements: program.announcements,
+          events: program.events,
+          scenes: [...DEMO_SCENES, ...program.scenes],
+        });
+        setSignage(program.signage);
+        setLastSync(new Date());
+      } catch {
+        /* mantém a última programação conhecida */
+      }
+    };
+    void syncProgram();
+    const programTimer = setInterval(syncProgram, PROGRAM_SYNC_INTERVAL_MS);
 
     const heartbeat = setInterval(() => {
       const snap = engine.snapshot();
@@ -176,6 +201,7 @@ export default function PlayerPage() {
     return () => {
       scheduler.stop();
       clearInterval(heartbeat);
+      clearInterval(programTimer);
       disconnectRemote();
     };
   }, [started, engine, identity.code, runScene, showMessage]);
@@ -254,6 +280,9 @@ export default function PlayerPage() {
           <div className="mt-1 text-sm capitalize text-fuse-muted">{dateStr}</div>
         </div>
       </header>
+
+      {/* ------------------------------------------------ Digital Signage */}
+      {started && signage.length > 0 && <SignageLayer items={signage} />}
 
       {/* ------------------------------------------------ Mensagens de cena / avisos */}
       <AnimatePresence>

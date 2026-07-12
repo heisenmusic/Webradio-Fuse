@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { FleetHealth, FleetStoreStatus } from "@fuse/shared";
 import { buildMockFleet, HEALTH_META } from "@/lib/admin/mock-fleet";
-import { apiConfigured, clearAuth, fetchFleetStatus, getAuth } from "@/lib/api";
+import { API_URL, apiConfigured, clearAuth, fetchFleetStatus, getAuth } from "@/lib/api";
 
 /**
  * Dashboard Operacional — visão em tempo real da frota de lojas.
@@ -54,9 +54,32 @@ export default function AdminPage() {
     };
     void load();
     const timer = setInterval(load, 30_000);
+
+    // Atualização instantânea: heartbeats propagados pelo gateway (sala `fleet`).
+    let disconnect = () => undefined as void;
+    void import("socket.io-client").then(({ io }) => {
+      if (cancelled) return;
+      const socket = io(`${API_URL}/realtime`, { transports: ["websocket", "polling"] });
+      socket.on("connect", () => socket.emit("fleet:join"));
+      socket.on(
+        "fleet:update",
+        (update: { storeCode: string; health: string }) => {
+          setFleet((prev) =>
+            prev.map((s) =>
+              s.storeCode === update.storeCode
+                ? { ...s, health: update.health.toLowerCase().replace(/_/g, "-") as FleetHealth, lastSeenAt: new Date().toISOString() }
+                : s,
+            ),
+          );
+        },
+      );
+      disconnect = () => socket.disconnect();
+    });
+
     return () => {
       cancelled = true;
       clearInterval(timer);
+      disconnect();
     };
   }, [router]);
   const [healthFilter, setHealthFilter] = useState<FleetHealth | "all">("all");

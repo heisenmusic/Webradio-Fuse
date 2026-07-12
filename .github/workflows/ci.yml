@@ -26,6 +26,9 @@ jobs:
       - name: Build @fuse/shared
         run: pnpm --filter @fuse/shared build
 
+      - name: Testes @fuse/shared
+        run: pnpm --filter @fuse/shared test
+
       - name: Gerar cliente Prisma
         run: pnpm --filter @fuse/api prisma:generate
 

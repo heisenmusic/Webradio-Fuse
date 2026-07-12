@@ -8,6 +8,7 @@
     "dev:web": "pnpm --filter @fuse/web dev",
     "dev:api": "pnpm --filter @fuse/api start:dev",
     "prisma:generate": "pnpm --filter @fuse/api prisma:generate",
+    "test": "pnpm -r --if-present test",
     "lint": "pnpm -r --if-present lint"
   },
   "engines": {

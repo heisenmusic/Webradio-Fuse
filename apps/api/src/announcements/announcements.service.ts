@@ -45,9 +45,10 @@ export class AnnouncementsService {
    */
   async scheduleForStore(storeCode: string) {
     const store = await this.prisma.store.findFirst({ where: { code: storeCode } });
-    if (!store) return { announcements: [], events: [] };
+    if (!store) return { announcements: [], events: [], signage: [] };
 
-    const [announcements, events] = await Promise.all([
+    const now = new Date();
+    const [announcements, events, signage] = await Promise.all([
       this.prisma.announcement.findMany({
         where: {
           tenantId: store.tenantId,
@@ -70,8 +71,25 @@ export class AnnouncementsService {
         },
         include: { scene: true },
       }),
+      this.prisma.signageItem.findMany({
+        where: {
+          tenantId: store.tenantId,
+          AND: [
+            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+            {
+              OR: [
+                { storeIds: { isEmpty: true }, storeGroupIds: { isEmpty: true } },
+                { storeIds: { has: store.id } },
+                ...(store.groupId ? [{ storeGroupIds: { has: store.groupId } }] : []),
+              ],
+            },
+          ],
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
 
-    return { announcements, events };
+    return { announcements, events, signage };
   }
 }

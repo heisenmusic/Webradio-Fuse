@@ -73,7 +73,11 @@ O dashboard tem dois modos, decididos por `NEXT_PUBLIC_API_URL` (veja `apps/web/
 - **Sem API configurada** → modo demonstração: `/admin` abre direto com frota simulada.
 - **Com API configurada** → `/admin/login` autentica na API (JWT + refresh com rotação automática no cliente), `/admin` mostra a frota real de `GET /v1/fleet/status` (atualizada a cada 30 s) e os botões de controle remoto enviam comandos reais via `POST /v1/stores/:id/commands` → Socket.IO → player.
 
-O player, quando a API está configurada, envia heartbeats a cada 30 s e conecta ao canal realtime para receber comandos da central (reiniciar, trocar stream, volume, aviso imediato, teste de áudio, cena, limpar cache, diagnóstico) com confirmação `command:ack`.
+O player, quando a API está configurada, envia heartbeats a cada 30 s, sincroniza a programação real da central a cada 5 min (avisos, eventos, cenas e signage — executados sempre no relógio local) e conecta ao canal realtime para receber comandos da central (reiniciar, trocar stream, volume, aviso imediato, teste de áudio, cena, limpar cache, diagnóstico) com confirmação `command:ack`.
+
+**Áreas de gestão do dashboard** (com API conectada): Frota (tempo real via Socket.IO), Avisos (com upload de MP3/WAV/OGG), Cenas & Eventos operacionais, Digital Signage (com upload de imagens) e Lojas.
+
+Para colocar em produção, siga o **[guia de deploy](docs/DEPLOY.md)** — inclui checklist de segurança, variáveis de ambiente, migrations (`prisma migrate deploy`) e dimensionamento.
 
 O player já vem configurado com os streams padrão e failover automático:
 
