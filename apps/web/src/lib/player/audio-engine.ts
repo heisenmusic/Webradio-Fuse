@@ -18,10 +18,14 @@ import {
  *  - Retorno automático ao principal com crossfade quando ele volta
  *  - Métricas de qualidade de conexão para o heartbeat
  *
- * Nota sobre CORS: streams Icecast sem `Access-Control-Allow-Origin` "mancham"
- * o MediaElementSource e o AnalyserNode passa a ler silêncio. O engine detecta
- * isso e alimenta o visualizador com dados procedurais sincronizados ao estado
- * de reprodução, mantendo a experiência visual viva.
+ * Nota sobre CORS: com `crossOrigin="anonymous"`, streams Icecast sem
+ * `Access-Control-Allow-Origin` são RECUSADOS pelo navegador; sem o atributo,
+ * tocam normalmente, mas não podem passar pelo MediaElementSource (silêncio).
+ * Por isso o engine opera em dois modos:
+ *   1. "webaudio"  — crossOrigin + AnalyserNode (visualizador real);
+ *   2. "direct"    — reprodução nativa + visualizador procedural.
+ * Começa em webaudio; se TODOS os endpoints falharem (provável bloqueio CORS),
+ * reconstrói em direct e tenta o ciclo de novo antes de ir para a emergência.
  */
 
 export interface EngineSnapshot {
@@ -66,6 +70,8 @@ export class FuseAudioEngine {
   private probeTimer: ReturnType<typeof setInterval> | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  private mode: "webaudio" | "direct" = "webaudio";
+  private triedDirectFallback = false;
   private analyserTainted = false;
   private taintChecked = false;
   private freqData = new Uint8Array(FFT_SIZE / 2);
@@ -137,7 +143,9 @@ export class FuseAudioEngine {
     if (this.gain && this.ctx) {
       this.gain.gain.cancelScheduledValues(now);
       this.gain.gain.linearRampToValueAtTime(this.volume, now + rampSec);
-    } else if (this.audio) {
+    }
+    // No modo direto o stream não passa pelo GainNode.
+    if (this.mode === "direct" && this.audio) {
       this.audio.volume = this.volume;
     }
     this.emit();
@@ -261,37 +269,79 @@ export class FuseAudioEngine {
   // -------------------------------------------------------------------------
 
   private ensureGraph() {
-    if (this.audio) return;
+    this.ensureContext();
+    if (!this.audio) this.buildStreamElement();
+  }
 
-    this.audio = new Audio();
-    this.audio.crossOrigin = "anonymous";
-    this.audio.preload = "none";
-
+  private ensureContext() {
+    if (this.ctx || typeof window === "undefined") return;
     try {
       const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new Ctx();
-      const source = this.ctx.createMediaElementSource(this.audio);
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = FFT_SIZE;
       this.analyser.smoothingTimeConstant = 0.82;
       this.gain = this.ctx.createGain();
       this.gain.gain.value = this.volume;
-      source.connect(this.analyser);
       this.analyser.connect(this.gain);
       this.gain.connect(this.ctx.destination);
     } catch {
       // Sem Web Audio API: reprodução direta, visualizador procedural.
-      this.audio.volume = this.volume;
+      this.mode = "direct";
+      this.analyserTainted = true;
+    }
+  }
+
+  private buildStreamElement() {
+    const el = new Audio();
+    el.preload = "none";
+    this.audio = el;
+
+    if (this.mode === "webaudio" && this.ctx && this.analyser) {
+      el.crossOrigin = "anonymous";
+      try {
+        const source = this.ctx.createMediaElementSource(el);
+        source.connect(this.analyser);
+      } catch {
+        this.mode = "direct";
+      }
+    }
+    if (this.mode === "direct") {
+      el.removeAttribute("crossorigin");
+      el.volume = this.volume;
       this.analyserTainted = true;
     }
 
-    this.audio.addEventListener("playing", () => {
+    // Handlers verificam `el === this.audio` para que um elemento descartado
+    // no fallback CORS não dispare failover fantasma.
+    el.addEventListener("playing", () => {
+      if (el !== this.audio) return;
       if (this.state !== "emergency") this.setState("playing");
       this.clearConnectTimer();
     });
-    this.audio.addEventListener("error", () => this.onStreamFailure("error"));
-    this.audio.addEventListener("stalled", () => this.noteStall());
-    this.audio.addEventListener("waiting", () => this.noteStall());
+    el.addEventListener("error", () => {
+      if (el === this.audio) this.onStreamFailure("error");
+    });
+    el.addEventListener("stalled", () => {
+      if (el === this.audio) this.noteStall();
+    });
+    el.addEventListener("waiting", () => {
+      if (el === this.audio) this.noteStall();
+    });
+  }
+
+  /** Fallback CORS: abandona o grafo Web Audio e toca o stream nativamente. */
+  private rebuildDirect() {
+    const old = this.audio;
+    this.audio = null;
+    if (old) {
+      old.pause();
+      old.removeAttribute("src");
+    }
+    this.mode = "direct";
+    this.analyserTainted = true;
+    this.buildStreamElement();
+    this.emit();
   }
 
   private async connectTo(index: number, reason: FailoverEvent["reason"]) {
@@ -332,9 +382,18 @@ export class FuseAudioEngine {
     const next = this.currentIndex + 1;
     if (next < this.config.endpoints.length) {
       void this.connectTo(next, reason);
-    } else {
-      void this.enterEmergency();
+      return;
     }
+    // Todos os endpoints falharam no modo webaudio: provável bloqueio CORS
+    // (o navegador recusa o stream quando o servidor não envia os headers).
+    // Tenta o ciclo inteiro de novo em reprodução direta antes da emergência.
+    if (this.mode === "webaudio" && !this.triedDirectFallback) {
+      this.triedDirectFallback = true;
+      this.rebuildDirect();
+      void this.connectTo(0, reason);
+      return;
+    }
+    void this.enterEmergency();
   }
 
   // -------------------------------------------------------------------------
