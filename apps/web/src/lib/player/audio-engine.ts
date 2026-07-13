@@ -122,12 +122,38 @@ export class FuseAudioEngine {
   /** Deve ser chamado a partir de um gesto do usuário (política de autoplay). */
   async start() {
     if (typeof window === "undefined") return;
+
+    // Sonda rápida (≤4s): o servidor envia CORS? Define o modo certo já na
+    // largada, em vez de descobrir por tentativa e erro (que custava ~30s).
+    const primary = this.config.endpoints[0];
+    if (primary && this.mode === "webaudio" && !this.audio) {
+      const corsOk = await this.detectCorsSupport(primary);
+      if (!corsOk) {
+        this.mode = "direct";
+        this.analyserTainted = true;
+      }
+    }
+
     this.ensureGraph();
     await this.ctx?.resume();
     this.startedAt = Date.now();
     this.setupMediaSession();
     this.startWatchdog();
     await this.connectTo(0, "manual");
+  }
+
+  /** Testa se o endpoint aceita requisições CORS (necessário para o AnalyserNode). */
+  private async detectCorsSupport(url: string): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4_000);
+      const res = await fetch(url, { mode: "cors", signal: controller.signal });
+      clearTimeout(timeout);
+      void res.body?.cancel();
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   stop() {
