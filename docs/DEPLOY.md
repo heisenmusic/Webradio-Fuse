@@ -28,6 +28,7 @@
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Segredos independentes e fortes |
 | `JWT_ACCESS_TTL` | Padrão `900s` |
 | `DEVICE_API_KEY` | Chave que os players usam nos heartbeats |
+| `STREAM_PROXY_TARGETS` | CSV de URLs que `/v1/stream-proxy/:idx` pode repassar (padrão: streams da estação). O proxy adiciona CORS para habilitar o visualizador sincronizado; cada ouvinte consome banda da API — para frotas grandes, prefira habilitar CORS no Icecast ou proxiar via nginx/CDN |
 | `CORS_ORIGINS` | Origens permitidas, separadas por vírgula |
 | `UPLOAD_DIR` | Diretório de mídia (volume persistente) |
 | `PORT` | Padrão `4000` |

@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { MediaModule } from './media/media.module';
 import { SignageModule } from './signage/signage.module';
+import { StreamModule } from './stream/stream.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { StoresModule } from './stores/stores.module';
 import { FleetModule } from './fleet/fleet.module';
@@ -25,6 +26,7 @@ import { HealthController } from './health.controller';
     AuthModule,
     MediaModule,
     SignageModule,
+    StreamModule,
     TenantsModule,
     StoresModule,
     FleetModule,

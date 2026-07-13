@@ -75,12 +75,18 @@ export default function PlayerPage() {
   // Engine + agendador + cenas (instanciados uma única vez no cliente)
   // ---------------------------------------------------------------------
   if (typeof window !== "undefined" && !engineRef.current) {
-    engineRef.current = new FuseAudioEngine(station);
+    engineRef.current = new FuseAudioEngine({
+      ...station,
+      corsProxyBase: process.env.NEXT_PUBLIC_API_URL || undefined,
+    });
   }
   const engine = engineRef.current;
 
   useEffect(() => {
-    engine?.updateConfig(station);
+    engine?.updateConfig({
+      ...station,
+      corsProxyBase: process.env.NEXT_PUBLIC_API_URL || undefined,
+    });
   }, [engine, station]);
 
   useEffect(() => {
@@ -215,6 +221,51 @@ export default function PlayerPage() {
     if (document.fullscreenElement) void document.exitFullscreen();
     else void document.documentElement.requestFullscreen();
   }, []);
+
+  // Atalhos de teclado: F tela cheia · V visualizador · S ajustes · ↑↓ volume · M mudo
+  const muteMemory = useRef(0.9);
+  useEffect(() => {
+    if (!started) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      const eng = engineRef.current;
+      switch (e.key.toLowerCase()) {
+        case "f":
+          toggleFullscreen();
+          break;
+        case "v": {
+          const idx = VISUALIZER_MODES.indexOf(visualizer);
+          setVisualizer(VISUALIZER_MODES[(idx + 1) % VISUALIZER_MODES.length]);
+          break;
+        }
+        case "s":
+          setSettingsOpen((o) => !o);
+          break;
+        case "m": {
+          if (!eng) break;
+          const current = eng.getVolume();
+          if (current > 0) {
+            muteMemory.current = current;
+            eng.setVolume(0, 0.2);
+          } else {
+            eng.setVolume(muteMemory.current || 0.9, 0.2);
+          }
+          break;
+        }
+        case "arrowup":
+          e.preventDefault();
+          eng?.setVolume(Math.min(1, (eng?.getVolume() ?? 0.9) + 0.05), 0.1);
+          break;
+        case "arrowdown":
+          e.preventDefault();
+          eng?.setVolume(Math.max(0, (eng?.getVolume() ?? 0.9) - 0.05), 0.1);
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [started, visualizer, setVisualizer, toggleFullscreen]);
 
   const state = snapshot?.state ?? "idle";
   const quality = snapshot?.quality ?? "offline";

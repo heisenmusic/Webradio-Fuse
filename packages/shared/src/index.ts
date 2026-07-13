@@ -35,6 +35,17 @@ export interface StationConfig {
   emergencyPlaylist: string[];
   /** Intervalo (ms) de re-teste do endpoint principal durante failover/emergência. */
   primaryProbeIntervalMs: number;
+  /**
+   * Base da API para o proxy de stream com CORS (`/v1/stream-proxy/:idx`).
+   * Quando o servidor Icecast de origem não envia CORS, o player tenta o
+   * proxy para manter o visualizador sincronizado à música.
+   */
+  corsProxyBase?: string;
+}
+
+/** Monta a URL do proxy de stream com CORS da API. */
+export function streamProxyUrl(base: string, index: number): string {
+  return `${base.replace(/\/$/, "")}/v1/stream-proxy/${index}`;
 }
 
 export interface FailoverEvent {

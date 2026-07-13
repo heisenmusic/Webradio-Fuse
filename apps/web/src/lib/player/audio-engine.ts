@@ -2,6 +2,7 @@
 
 import {
   classifyQuality,
+  streamProxyUrl,
   type ConnectionQuality,
   type FailoverEvent,
   type PlayerState,
@@ -56,6 +57,9 @@ export class FuseAudioEngine {
   private emergencyGain: GainNode | null = null;
 
   private config: StationConfig;
+  /** Endpoints efetivamente usados (originais ou proxiados com CORS). */
+  private endpoints: string[] = [];
+  private usingProxy = false;
   private state: PlayerState = "idle";
   private currentIndex = 0;
   private volume = 0.9;
@@ -82,6 +86,7 @@ export class FuseAudioEngine {
 
   constructor(config: StationConfig) {
     this.config = config;
+    this.endpoints = [...config.endpoints];
   }
 
   // -------------------------------------------------------------------------
@@ -100,7 +105,7 @@ export class FuseAudioEngine {
       currentUrl:
         this.state === "emergency"
           ? this.config.emergencyPlaylist[this.emergencyTrackIndex] ?? null
-          : this.config.endpoints[this.currentIndex] ?? null,
+          : this.endpoints[this.currentIndex] ?? null,
       currentIndex: this.currentIndex,
       volume: this.volume,
       quality: this.quality(),
@@ -117,6 +122,7 @@ export class FuseAudioEngine {
 
   updateConfig(config: StationConfig) {
     this.config = config;
+    if (!this.usingProxy) this.endpoints = [...config.endpoints];
   }
 
   /** Deve ser chamado a partir de um gesto do usuário (política de autoplay). */
@@ -128,7 +134,20 @@ export class FuseAudioEngine {
     const primary = this.config.endpoints[0];
     if (primary && this.mode === "webaudio" && !this.audio) {
       const corsOk = await this.detectCorsSupport(primary);
-      if (!corsOk) {
+      if (!corsOk && this.config.corsProxyBase) {
+        // Origem sem CORS, mas a API oferece o proxy /v1/stream-proxy —
+        // usa-o para manter o visualizador sincronizado à música.
+        const proxied = this.config.endpoints.map((_, i) =>
+          streamProxyUrl(this.config.corsProxyBase!, i),
+        );
+        if (await this.detectCorsSupport(proxied[0])) {
+          this.endpoints = proxied;
+          this.usingProxy = true;
+        } else {
+          this.mode = "direct";
+          this.analyserTainted = true;
+        }
+      } else if (!corsOk) {
         this.mode = "direct";
         this.analyserTainted = true;
       }
@@ -183,7 +202,7 @@ export class FuseAudioEngine {
 
   /** Troca manual de stream sem reinicializar o player. */
   async switchTo(index: number) {
-    if (index < 0 || index >= this.config.endpoints.length) return;
+    if (index < 0 || index >= this.endpoints.length) return;
     await this.connectTo(index, "manual");
   }
 
@@ -372,13 +391,13 @@ export class FuseAudioEngine {
 
   private async connectTo(index: number, reason: FailoverEvent["reason"]) {
     if (!this.audio) return;
-    const url = this.config.endpoints[index];
+    const url = this.endpoints[index];
     if (!url) {
       await this.enterEmergency();
       return;
     }
 
-    const from = this.config.endpoints[this.currentIndex] ?? null;
+    const from = this.endpoints[this.currentIndex] ?? null;
     this.currentIndex = index;
     this.taintChecked = false;
     this.setState(index === 0 && reason === "manual" ? "connecting" : "failover");
@@ -406,7 +425,7 @@ export class FuseAudioEngine {
     if (this.state === "stopped" || this.state === "idle") return;
     this.clearConnectTimer();
     const next = this.currentIndex + 1;
-    if (next < this.config.endpoints.length) {
+    if (next < this.endpoints.length) {
       void this.connectTo(next, reason);
       return;
     }
@@ -430,7 +449,7 @@ export class FuseAudioEngine {
     if (this.state === "emergency") return;
     this.setState("emergency");
     this.lastFailover = {
-      from: this.config.endpoints[this.currentIndex] ?? null,
+      from: this.endpoints[this.currentIndex] ?? null,
       to: null,
       reason: "offline",
       at: new Date().toISOString(),
@@ -482,7 +501,7 @@ export class FuseAudioEngine {
         this.clearProbeTimer();
         return;
       }
-      const primary = this.config.endpoints[0];
+      const primary = this.endpoints[0];
       if (!primary) return;
       const alive = await this.probeEndpoint(primary);
       if (alive) {
@@ -520,7 +539,7 @@ export class FuseAudioEngine {
     }
     this.lastFailover = {
       from: null,
-      to: this.config.endpoints[0] ?? null,
+      to: this.endpoints[0] ?? null,
       reason: "recovered",
       at: new Date().toISOString(),
     };
